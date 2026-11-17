@@ -1,0 +1,36 @@
+.{
+    .name = .kosm_cursor,
+    .version = "0.0.0",
+    .fingerprint = 0x1b7ee76471d684d1, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{
+        .kosm = .{
+            .url = "git+https://git.nnstdios.com/ktisigonos/kosm?ref=master#deb5cf90bf39a5a56383cae87741a63e188a31c5",
+            .hash = "kosm-0.0.0-YCShstdKDADrhGiFLCoGqCNCw5TX_OTNjGr5dAG1t6vz",
+        },
+        .kosm_icons = .{
+            .url = "git+https://git.nnstdios.com/ktisigonos/kosm_icons?ref=master#c7efd52d73e37c705112fcebc609459b19863fba",
+            .hash = "kosm_icons-0.0.0-55E6XJrlAAD870CRb29ThBObKH881s9iJ940M3KFPvxX",
+        },
+        .bibata = .{
+            .url = "git+https://github.com/ful1e5/Bibata_Cursor#ddb09273cde49faeb6a32282660ff4293f52d6e0",
+            .hash = "N-V-__8AABxCDAAmPx_Ew84pRqADJYBd-kz2TwE5OSQ6ZU5Q",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "root.zig",
+        "App.zig",
+        "Bibata.zig",
+        "Cursor.zig",
+        "Own.zig",
+        "Picture.zig",
+        "System.zig",
+        "bibata_cursors.zig",
+        "hyprcursor.zig",
+        "xcursor.zig",
+        "zip.zig",
+        "README.md",
+    },
+}
