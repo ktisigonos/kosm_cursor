@@ -12,7 +12,7 @@ picked by name. GTK, Hyprland and X apps pick it by `App.themeName`; `kosm_base`
 - **A system theme** (`.system = .{ .name = "Bibata-Modern-Ice" }`): used as is, nothing written.
 
 A diff shows the theme as one line. After an apply with `size` set, `hyprctl setcursor` makes
-Hyprland load the new cursors; a failure is a warning. Other running programs keep the old
+a running Hyprland load the new cursors; a failure is a warning. Other running programs keep the old
 cursors until restarted.
 
 ## Colors

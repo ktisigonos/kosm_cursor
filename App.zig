@@ -84,13 +84,14 @@ pub fn apply(self: App, output: *kosm.Output) !void {
     try self.generate(output, source);
 }
 
-/// Tells Hyprland to load the cursors at `size`; a failure (Hyprland not running) is a warning.
+/// Tells Hyprland to load the cursors at `size`; without a running Hyprland there is nothing to
+/// tell, and any other failure is a warning.
 pub fn reload(self: App, reloader: *kosm.Reloader) !void {
     const size = self.size orelse return;
     const name = self.themeName() orelse return;
     var buffer: [16]u8 = undefined;
     const printed = std.fmt.bufPrint(&buffer, "{d}", .{size}) catch unreachable; // a u32 fits
-    try reloader.run(&.{ "hyprctl", "setcursor", name, printed });
+    try reloader.runIfRunning("Hyprland", &.{ "hyprctl", "setcursor", name, printed });
 }
 
 /// Where a generated theme's SVGs come from and what their colors become.
