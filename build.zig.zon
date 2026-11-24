@@ -5,12 +5,12 @@
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .kosm = .{
-            .url = "git+https://git.nnstdios.com/ktisigonos/kosm?ref=master#deb5cf90bf39a5a56383cae87741a63e188a31c5",
-            .hash = "kosm-0.0.0-YCShstdKDADrhGiFLCoGqCNCw5TX_OTNjGr5dAG1t6vz",
+            .url = "git+https://git.nnstdios.com/ktisigonos/kosm?ref=master#f6d859ae5c37b2012bb75b10f2e558f3e36153ec",
+            .hash = "kosm-0.0.0-YCShsjJhGwChJLifPnNgdKvF6BvskAvM98V1N3cjOqMF",
         },
         .kosm_icons = .{
-            .url = "git+https://git.nnstdios.com/ktisigonos/kosm_icons?ref=master#c7efd52d73e37c705112fcebc609459b19863fba",
-            .hash = "kosm_icons-0.0.0-55E6XJrlAAD870CRb29ThBObKH881s9iJ940M3KFPvxX",
+            .url = "git+https://git.nnstdios.com/ktisigonos/kosm_icons?ref=master#41f185386c85c4bec655cb2f6c062bcc39e2685e",
+            .hash = "kosm_icons-0.0.0-55E6XNPqAADTqt7suPX33q6j0fOrQdQLBDL32_XeEfQA",
         },
         .bibata = .{
             .url = "git+https://github.com/ful1e5/Bibata_Cursor#ddb09273cde49faeb6a32282660ff4293f52d6e0",
