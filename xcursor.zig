@@ -54,7 +54,7 @@ fn write(writer: *std.Io.Writer, images: []const Image) std.Io.Writer.Error!void
     for (images) |image| {
         for ([_]u32{ image_header_size, image_type, image.size, image_version, image.size, image.size, image.x_hotspot, image.y_hotspot, image.delay }) |field|
             try writer.writeInt(u32, field, .little);
-        for (image.pixels) |pixel| try writer.writeInt(u32, pixel, .little);
+        try writer.writeSliceEndian(u32, image.pixels, .little);
     }
 }
 
