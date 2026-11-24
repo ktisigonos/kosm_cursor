@@ -123,65 +123,126 @@ fn generate(self: App, output: *kosm.Output, source: Source) !void {
     const group = self.directory;
     const theme_name = self.themeName().?;
     const display_name = try output.displayName(self.directory, self.name);
-    try output.verbatim(.{
+    const drawings = try allocator.alloc(Drawing, source.cursors.len);
+    for (drawings, source.cursors) |*drawing, cursor| drawing.* = .{ .cursor = cursor };
+    defer for (drawings) |drawing| drawing.deinit();
+    // Drawn in three rounds, so a cursor of many frames spreads over every core too.
+    try output.parallel(Drawing, drawings, Drawing.Context{ .app = self, .folder = source.folder, .coloring = source.coloring }, Drawing.prepare);
+    try output.parallel(Rendering, try self.renderings(output, drawings), {}, Rendering.render);
+    try output.parallel(Drawing, drawings, {}, Drawing.encode);
+
+    var files: std.ArrayList(kosm.Output.VerbatimOptions) = .empty;
+    var links: std.ArrayList(kosm.Output.LinkOptions) = .empty;
+    try files.append(allocator, .{
         .file = try self.path(output, &.{"index.theme"}),
         .content = try allocator.print("[Icon Theme]\nName={s}\nComment=Cursors made by kosm\n", .{display_name}),
         .group = group,
     });
-    try output.verbatim(.{
+    try files.append(allocator, .{
         .file = try self.path(output, &.{"manifest.hl"}),
         .content = try hyprcursor.manifest(allocator, theme_name, display_name),
         .group = group,
     });
-    var colors: Colors = .{ .allocator = allocator, .coloring = source.coloring };
-    for (source.cursors) |cursor| try self.writeCursor(output, source.folder, cursor, &colors);
+    for (drawings) |drawing| {
+        const cursor = drawing.cursor;
+        const archive_name = try allocator.print("{s}.hlc", .{cursor.name});
+        try files.append(allocator, .{ .file = try self.path(output, &.{ hyprcursor.cursors_directory, archive_name }), .content = drawing.archive, .group = group });
+        try files.append(allocator, .{ .file = try self.path(output, &.{ "cursors", cursor.name }), .content = drawing.xcursor, .group = group });
+        for (cursor.aliases) |alias|
+            try links.append(allocator, .{ .file = try self.path(output, &.{ "cursors", alias }), .target = cursor.name, .group = group });
+    }
+    try output.verbatimAll(files.items);
+    try output.linkAll(links.items);
 }
 
-/// Writes one cursor's XCursor file, its links and its `.hlc`.
-fn writeCursor(self: App, output: *kosm.Output, folder: []const u8, cursor: Cursor, colors: *Colors) !void {
-    const allocator = output.allocator;
-    const group = self.directory;
-    if (cursor.frames == 0) return output.fail(self.directory, "cursor {s} has 0 frames", .{cursor.name});
-    const frames = try allocator.alloc(hyprcursor.Frame, cursor.frames);
-    const pictures = try allocator.alloc(Picture, cursor.frames);
-    var parsed: usize = 0;
-    defer for (pictures[0..parsed]) |picture| picture.deinit();
-    for (frames, pictures, 1..) |*frame, *picture, number| {
-        const relative = if (cursor.frames == 1)
-            try allocator.print("{s}.svg", .{cursor.name})
-        else
-            try allocator.print("{s}/{s}-{d:0>2}.svg", .{ cursor.name, cursor.name, number });
-        const file = try std.Io.Dir.path.join(allocator, &.{ folder, relative });
-        frame.* = .{ .name = std.Io.Dir.path.basename(relative), .svg = try colors.recolorSvg(try output.read(file)) };
-        picture.* = Picture.parse(frame.svg) catch |err| return output.fail(file, "{s}", .{Picture.describe(err)});
-        parsed += 1;
-    }
-
-    const canvas = @max(pictures[0].width, pictures[0].height);
-    const archive = hyprcursor.archive(allocator, cursor, cursor.x_hotspot / canvas, cursor.y_hotspot / canvas, frames) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.ArchiveTooLarge => return output.fail(self.directory, "cursor {s} is too large for a zip archive", .{cursor.name}),
-    };
-    const archive_name = try allocator.print("{s}.hlc", .{cursor.name});
-    try output.verbatim(.{ .file = try self.path(output, &.{ hyprcursor.cursors_directory, archive_name }), .content = archive, .group = group });
-
-    const images = try allocator.alloc(xcursor.Image, self.sizes.len * pictures.len);
-    for (self.sizes, 0..) |size, size_index| {
-        for (pictures, 0..) |picture, frame_index| {
-            const scale = picture.scaleTo(size);
-            images[size_index * pictures.len + frame_index] = .{
-                .size = size,
-                .x_hotspot = hotspotPixel(cursor.x_hotspot * scale, size),
-                .y_hotspot = hotspotPixel(cursor.y_hotspot * scale, size),
-                .delay = if (pictures.len > 1) cursor.frame_delay else 0,
-                .pixels = try picture.render(allocator, size),
-            };
+/// Every image of every cursor, one for each size and frame, in the order XCursor files hold
+/// them; each `Drawing.images` is filled when they are rendered.
+fn renderings(self: App, output: *kosm.Output, drawings: []Drawing) ![]Rendering {
+    var all: std.ArrayList(Rendering) = .empty;
+    for (drawings) |*drawing| {
+        const cursor = drawing.cursor;
+        const pictures = drawing.pictures[0..drawing.parsed];
+        drawing.images = try output.allocator.alloc(xcursor.Image, self.sizes.len * pictures.len);
+        for (self.sizes, 0..) |size, size_index| {
+            for (pictures, 0..) |picture, frame_index| {
+                const scale = picture.scaleTo(size);
+                const image = &drawing.images[size_index * pictures.len + frame_index];
+                image.* = .{
+                    .size = size,
+                    .x_hotspot = hotspotPixel(cursor.x_hotspot * scale, size),
+                    .y_hotspot = hotspotPixel(cursor.y_hotspot * scale, size),
+                    .delay = if (pictures.len > 1) cursor.frame_delay else 0,
+                    .pixels = &.{},
+                };
+                try all.append(output.allocator, .{ .picture = picture, .image = image });
+            }
         }
     }
-    try output.verbatim(.{ .file = try self.path(output, &.{ "cursors", cursor.name }), .content = try xcursor.encode(allocator, images), .group = group });
-    for (cursor.aliases) |alias|
-        try output.link(.{ .file = try self.path(output, &.{ "cursors", alias }), .target = cursor.name, .group = group });
+    return all.items;
 }
+
+/// One cursor's files: its hyprcursor archive and its XCursor file, and what they are made of.
+const Drawing = struct {
+    cursor: Cursor,
+    /// One parsed frame each; the first `parsed` own resvg trees until `deinit`.
+    pictures: []Picture = &.{},
+    parsed: usize = 0,
+    images: []xcursor.Image = &.{},
+    archive: []const u8 = "",
+    xcursor: []const u8 = "",
+
+    /// What every cursor is prepared with.
+    const Context = struct {
+        app: App,
+        folder: []const u8,
+        coloring: Coloring,
+    };
+
+    fn deinit(drawing: Drawing) void {
+        for (drawing.pictures[0..drawing.parsed]) |picture| picture.deinit();
+    }
+
+    /// Reads, recolors and parses the cursor's frames, and builds its archive from them.
+    fn prepare(context: Context, output: *kosm.Output, drawing: *Drawing) kosm.Output.Error!void {
+        const allocator = output.allocator;
+        const cursor = drawing.cursor;
+        if (cursor.frames == 0) return output.fail(context.app.directory, "cursor {s} has 0 frames", .{cursor.name});
+        var colors: Colors = .{ .allocator = allocator, .coloring = context.coloring };
+        const frames = try allocator.alloc(hyprcursor.Frame, cursor.frames);
+        drawing.pictures = try allocator.alloc(Picture, cursor.frames);
+        for (frames, drawing.pictures, 1..) |*frame, *picture, number| {
+            const relative = if (cursor.frames == 1)
+                try allocator.print("{s}.svg", .{cursor.name})
+            else
+                try allocator.print("{s}/{s}-{d:0>2}.svg", .{ cursor.name, cursor.name, number });
+            const file = try std.Io.Dir.path.join(allocator, &.{ context.folder, relative });
+            frame.* = .{ .name = std.Io.Dir.path.basename(relative), .svg = try colors.recolorSvg(try output.read(file)) };
+            picture.* = Picture.parse(frame.svg) catch |err| return output.fail(file, "{s}", .{Picture.describe(err)});
+            drawing.parsed += 1;
+        }
+        const canvas = @max(drawing.pictures[0].width, drawing.pictures[0].height);
+        drawing.archive = hyprcursor.archive(allocator, cursor, cursor.x_hotspot / canvas, cursor.y_hotspot / canvas, frames) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ArchiveTooLarge => return output.fail(context.app.directory, "cursor {s} is too large for a zip archive", .{cursor.name}),
+        };
+    }
+
+    /// Writes the XCursor file from the rendered images.
+    fn encode(_: void, output: *kosm.Output, drawing: *Drawing) kosm.Output.Error!void {
+        drawing.xcursor = try xcursor.encode(output.allocator, drawing.images);
+    }
+};
+
+/// One image of a cursor to render: a frame at one size. Several render from one picture at
+/// once, which resvg allows: its trees are only read while rendering.
+const Rendering = struct {
+    picture: Picture,
+    image: *xcursor.Image,
+
+    fn render(_: void, output: *kosm.Output, rendering: *Rendering) kosm.Output.Error!void {
+        rendering.image.pixels = try rendering.picture.render(output.allocator, rendering.image.size);
+    }
+};
 
 /// The pixel a hotspot at `position` pixels falls on, inside a `size` square.
 fn hotspotPixel(position: f64, size: u32) u32 {
@@ -194,7 +255,8 @@ fn path(self: App, output: *kosm.Output, parts: []const []const u8) ![]const u8 
     return std.Io.Dir.path.join(output.allocator, &.{ self.directory, joined });
 }
 
-/// Recolors SVGs, converting each distinct color once.
+/// Recolors SVGs, converting each distinct color once. Not shared between threads: its cache
+/// is unguarded.
 const Colors = struct {
     allocator: std.mem.Allocator,
     coloring: Coloring,
